@@ -1,0 +1,108 @@
+# Build APK อัตโนมัติด้วย GitHub Actions
+#
+# - push tag ที่ขึ้นต้นด้วย v (เช่น v1.0.0) -> build release APK แล้วแนบไว้ใน GitHub Releases
+# - กด Run workflow เองในแท็บ Actions      -> build แล้วเก็บ APK ไว้ใน Artifacts ของงานนั้น
+#
+# Secrets ที่ต้องตั้ง (Settings -> Secrets and variables -> Actions):
+#   CREATE_ROOM_KEY     รหัสสร้างห้อง (ตรงกับ CREATE_ROOM_KEY บน Render)
+#   KEYSTORE_BASE64     ไฟล์ release keystore (.jks) ที่แปลงเป็น base64
+#   KEYSTORE_PASSWORD   รหัสผ่าน keystore
+#   KEY_ALIAS           ชื่อ key alias
+#   KEY_PASSWORD        รหัสผ่านของ key
+
+name: Android Release APK
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write   # ต้องใช้ตอนสร้าง Release
+
+env:
+  # ถ้าโปรเจกต์ Android อยู่ในโฟลเดอร์ย่อยของ repo ให้แก้เป็นชื่อโฟลเดอร์นั้น เช่น 'android'
+  PROJECT_DIR: '.'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.PROJECT_DIR }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check secrets
+        env:
+          CREATE_ROOM_KEY: ${{ secrets.CREATE_ROOM_KEY }}
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          missing=""
+          for v in CREATE_ROOM_KEY KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+            if [ -z "${!v}" ]; then missing="$missing $v"; fi
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::ยังไม่ได้ตั้ง Secrets:$missing (Settings -> Secrets and variables -> Actions)"
+            exit 1
+          fi
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Decode keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.jks"
+
+      - name: Build release APK
+        env:
+          CREATE_ROOM_KEY: ${{ secrets.CREATE_ROOM_KEY }}
+          RELEASE_STORE_FILE: ${{ runner.temp }}/release.jks
+          RELEASE_STORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon --stacktrace
+
+      - name: Rename APK
+        id: apk
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          if [ "${GITHUB_REF_TYPE}" != "tag" ]; then VERSION="build-${GITHUB_RUN_NUMBER}"; fi
+          SRC=$(ls app/build/outputs/apk/release/*.apk | head -n 1)
+          OUT="$RUNNER_TEMP/meeting-app-${VERSION}.apk"
+          cp "$SRC" "$OUT"
+          echo "path=$OUT" >> "$GITHUB_OUTPUT"
+          echo "name=meeting-app-${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.apk.outputs.name }}
+          path: ${{ steps.apk.outputs.path }}
+
+      - name: Publish GitHub Release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.apk.outputs.path }}
+          generate_release_notes: true
+          body: |
+            ## ติดตั้งแอป
+            1. ดาวน์โหลดไฟล์ `.apk` ด้านล่างบนมือถือ Android
+            2. เปิดไฟล์แล้วกดติดตั้ง (ถ้ามือถือถาม ให้อนุญาต "ติดตั้งแอปที่ไม่รู้จัก")
+
+            คนที่ได้รับลิงก์เชิญเข้าประชุมผ่านเบราว์เซอร์ได้เลย ไม่ต้องติดตั้งแอป

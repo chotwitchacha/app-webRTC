@@ -1,35 +1,30 @@
-# Gradle files
+# ---------- Android Studio / Gradle ----------
+*.iml
 .gradle/
-build/
-.kotlin/
-
-# Local configuration file (sdk path, etc)
-local.properties
-
-# Log/OS Files
-*.log
-
-# Android Studio generated files and folders
-captures/
+/local.properties
+/.idea/
+.DS_Store
+/build/
+/app/build/
+/captures/
 .externalNativeBuild/
 .cxx/
-*.aab
-*.apk
-output-metadata.json
+.kotlin/
 
-# IntelliJ
-*.iml
-.idea/
-misc.xml
-deploymentTargetDropDown.xml
-render.experimental.xml
-
-# Keystore files
+# ---------- ความลับ: ห้าม push ----------
+# รหัสสร้างห้องและรหัส keystore อยู่ใน local.properties
+local.properties
 *.jks
 *.keystore
+keystore.properties
+*.base64.txt
 
-# Google Services (e.g. APIs or Firebase)
-google-services.json
+# ---------- ไฟล์ที่ build ได้ (แจกผ่าน GitHub Releases แทน) ----------
+*.apk
+*.aab
+/app/release/
+/app/debug/
 
-# Android Profiling
-*.hprof
+# ---------- Server (ถ้าเก็บไว้ใน repo เดียวกัน) ----------
+node_modules/
+.env
